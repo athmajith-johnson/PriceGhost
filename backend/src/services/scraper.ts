@@ -513,7 +513,7 @@ const siteScrapers: SiteScraper[] = [
 
       // 3. "New & Used from $X" link text
       const newUsedLink = $('#usedAndNewBuySection, #newUsedBuyBox, [id*="olp"]').text();
-      const newUsedMatch = newUsedLink.match(/\$[\d,]+\.?\d*/g);
+      const newUsedMatch = newUsedLink.match(/[$€£¥₹][\d,]+\.?\d*/g);
       if (newUsedMatch) {
         for (const priceStr of newUsedMatch) {
           addPrice(parsePrice(priceStr));
@@ -552,8 +552,9 @@ const siteScrapers: SiteScraper[] = [
       if (!mainPrice) {
         const whole = $('#corePrice_feature_div .a-price-whole').first().text().replace(',', '');
         const fraction = $('#corePrice_feature_div .a-price-fraction').first().text();
+        const symbol = $('#corePrice_feature_div .a-price-symbol').first().text().trim() || '$';
         if (whole) {
-          const priceStr = `$${whole}${fraction ? '.' + fraction : ''}`;
+          const priceStr = `${symbol}${whole}${fraction ? '.' + fraction : ''}`;
           const parsed = parsePrice(priceStr);
           if (parsed && parsed.price >= 2) {
             mainPrice = parsed;
