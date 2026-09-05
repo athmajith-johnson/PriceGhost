@@ -12,9 +12,10 @@ interface ProductCardProps {
   isSelected?: boolean;
   onSelect?: (id: number, selected: boolean) => void;
   showCheckbox?: boolean;
+  dragHandle?: React.ReactNode;
 }
 
-export default function ProductCard({ product, onDelete, onRefresh, isSelected, onSelect, showCheckbox }: ProductCardProps) {
+export default function ProductCard({ product, onDelete, onRefresh, isSelected, onSelect, showCheckbox, dragHandle }: ProductCardProps) {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [timeRemaining, setTimeRemaining] = useState('');
@@ -466,6 +467,8 @@ export default function ProductCard({ product, onDelete, onRefresh, isSelected, 
           font-variant-numeric: tabular-nums;
         }
       `}</style>
+
+      {dragHandle}
 
       {showCheckbox && (
         <input
