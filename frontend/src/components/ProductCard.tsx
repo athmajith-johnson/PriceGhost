@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { formatPrice as formatCurrency } from '../utils/currency';
 import { Link } from 'react-router-dom';
 import { Product } from '../api/client';
 import Sparkline from './Sparkline';
@@ -81,9 +82,7 @@ export default function ProductCard({ product, onDelete, onRefresh, isSelected, 
     if (price === null || price === undefined) return 'N/A';
     const numPrice = typeof price === 'string' ? parseFloat(price) : price;
     if (isNaN(numPrice)) return 'N/A';
-    const currencySymbol =
-      currency === 'EUR' ? '€' : currency === 'GBP' ? '£' : currency === 'CHF' ? 'CHF ' : '$';
-    return `${currencySymbol}${numPrice.toFixed(2)}`;
+    return formatCurrency(numPrice, currency || 'USD');
   };
 
   const formatPriceChange = (change: number | null | undefined) => {

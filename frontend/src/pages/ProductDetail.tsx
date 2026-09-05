@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { formatPrice as formatCurrency } from '../utils/currency';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import Layout from '../components/Layout';
 import PriceChart from '../components/PriceChart';
@@ -166,9 +167,7 @@ export default function ProductDetail() {
     if (price === null || price === undefined) return 'N/A';
     const numPrice = typeof price === 'string' ? parseFloat(price) : price;
     if (isNaN(numPrice)) return 'N/A';
-    const currencySymbol =
-      currency === 'EUR' ? '€' : currency === 'GBP' ? '£' : currency === 'CHF' ? 'CHF ' : '$';
-    return `${currencySymbol}${numPrice.toFixed(2)}`;
+    return formatCurrency(numPrice, currency || 'USD');
   };
 
   if (isLoading) {
