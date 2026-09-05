@@ -101,14 +101,25 @@ function extractJsonLdCandidates($: CheerioAPI): PriceCandidate[] {
       if (product?.offers) {
         const offer = Array.isArray(product.offers) ? product.offers[0] : product.offers;
         const priceValue = offer.lowPrice || offer.price || offer.priceSpecification?.price;
-        const currency = offer.priceCurrency || offer.priceSpecification?.priceCurrency || 'USD';
+        let currency = offer.priceCurrency || offer.priceSpecification?.priceCurrency;
+
+        if (!currency) {
+          const htmlText = $.html();
+          const symbolMatch = htmlText.match(/([$€£¥₹])/);
+          if (symbolMatch) {
+            const symbolMap: Record<string, string> = { '$': 'USD', '€': 'EUR', '£': 'GBP', '¥': 'JPY', '₹': 'INR' };
+            currency = symbolMap[symbolMatch[1]] || 'USD';
+          } else {
+            currency = 'USD';
+          }
+        }
 
         if (priceValue) {
           const price = parseFloat(String(priceValue));
           if (!isNaN(price) && price > 0) {
             candidates.push({
               price,
-              currency,
+              currency: currency.toUpperCase(),
               method: 'json-ld',
               context: `Structured data: ${product.name || 'Product'}`,
               confidence: 0.9, // JSON-LD is highly reliable
@@ -1595,8 +1606,9 @@ export async function scrapeProductWithVoting(
     if (anchorPrice && allCandidates.length > 0) {
       console.log(`[Voting] Have anchor price ${anchorPrice}, searching ${allCandidates.length} candidates: ${allCandidates.map(c => c.price).join(', ')}`);
 
-      // Find the candidate closest to the anchor price
-      const closestCandidate = allCandidates.reduce((closest, candidate) => {
+      // Find the candidate closest to the anchor price. 
+      // Sort by confidence first so if multiple have the same price diff, we prefer the most confident one.
+      const closestCandidate = [...allCandidates].sort((a, b) => b.confidence - a.confidence).reduce((closest, candidate) => {
         const closestDiff = Math.abs(closest.price - anchorPrice);
         const candidateDiff = Math.abs(candidate.price - anchorPrice);
         return candidateDiff < closestDiff ? candidate : closest;

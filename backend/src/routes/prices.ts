@@ -84,15 +84,23 @@ router.post('/:productId/refresh', async (req: AuthRequest, res: Response) => {
       await stockStatusHistoryQueries.recordChange(productId, scrapedData.stockStatus);
     }
 
-    // Record new price if available
+    // Get latest price to compare
+    const latestPrice = await priceHistoryQueries.getLatest(productId);
+
+    // Record new price if available and if it changed (price or currency)
     let newPrice = null;
     if (scrapedData.price) {
-      newPrice = await priceHistoryQueries.create(
-        productId,
-        scrapedData.price.price,
-        scrapedData.price.currency,
-        scrapedData.aiStatus
-      );
+      if (!latestPrice || latestPrice.price !== scrapedData.price.price || latestPrice.currency !== scrapedData.price.currency) {
+        newPrice = await priceHistoryQueries.create(
+          productId,
+          scrapedData.price.price,
+          scrapedData.price.currency,
+          scrapedData.aiStatus
+        );
+      } else {
+        // Just return the existing latest price if nothing changed
+        newPrice = latestPrice;
+      }
     }
 
     // Update last_checked timestamp and schedule next check
