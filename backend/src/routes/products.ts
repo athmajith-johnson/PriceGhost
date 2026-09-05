@@ -24,7 +24,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 router.post('/', async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.userId!;
-    const { url, refresh_interval, selectedPrice, selectedMethod } = req.body;
+    const { url, refresh_interval, selectedPrice, selectedMethod, selectedCurrency } = req.body;
 
     if (!url) {
       res.status(400).json({ error: 'URL is required' });
@@ -65,7 +65,7 @@ router.post('/', async (req: AuthRequest, res: Response) => {
       await priceHistoryQueries.create(
         product.id,
         selectedPrice,
-        'USD', // TODO: Get currency from selection
+        selectedCurrency || 'USD',
         null
       );
 
