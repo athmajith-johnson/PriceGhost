@@ -17,21 +17,42 @@ const currencyMap: Record<string, string> = {
   'USD': 'USD',
   'EUR': 'EUR',
   'GBP': 'GBP',
+  'A$': 'AUD',
+  'C$': 'CAD',
+  'HK$': 'HKD',
+  'NZ$': 'NZD',
+  'S$': 'SGD',
+  'Rs.': 'INR',
+  'Rs': 'INR',
+  'AED': 'AED',
+  'SAR': 'SAR',
+  'KWD': 'KWD',
+  'QAR': 'QAR',
+  'BHD': 'BHD',
+  'OMR': 'OMR',
+  'Rp': 'IDR',
+  'RM': 'MYR',
+  'THB': 'THB',
+  'PHP': 'PHP',
+  'VND': 'VND',
+  'R$': 'BRL',
+  'kr': 'SEK',
+  'kr.': 'SEK',
 };
 
 // Patterns to match prices in text
 const pricePatterns = [
-  // $29.99 or $29,99 or $ 29.99
-  /(?<currency>[$€£¥₹])\s*(?<price>[\d,]+\.?\d*)/,
-  // CHF 29.99 or Fr. 29.99 (Swiss franc prefix)
-  /(?<currency>CHF|Fr\.)\s*(?<price>[\d,]+\.?\d*)/i,
-  // 29.99 USD or 29,99 EUR or 29.99 CHF
-  /(?<price>[\d,]+\.?\d*)\s*(?<currency>USD|EUR|GBP|CAD|AUD|JPY|INR|CHF)/i,
+  // C$ 29.99 or Rs. 29.99 or $ 29.99
+  /(?<currency>[$€£¥₹]|Fr\.|A\$|C\$|HK\$|NZ\$|S\$|Rs\.?|R\$|kr\.?|Rp|RM)\s*(?<price>[\d,]+\.?\d*)/i,
+  // 29.99 USD or 29,99 EUR or 29.99 AED (Any 3 uppercase letters)
+  /(?<price>[\d,]+\.?\d*)\s*(?<currency>[A-Z]{3})/i,
+  // AED 29.99 (Any 3 uppercase letters before price)
+  /(?<currency>[A-Z]{3})\s*(?<price>[\d,]+\.?\d*)/i,
   // Plain number with optional decimal (fallback)
   /(?<price>\d{1,3}(?:[,.\s]?\d{3})*(?:[.,]\d{2})?)/,
 ];
 
-export function parsePrice(text: string): ParsedPrice | null {
+export function parsePrice(text: string, defaultCurrency: string = 'USD'): ParsedPrice | null {
   if (!text) return null;
 
   // Clean up the text
@@ -55,13 +76,20 @@ export function parsePrice(text: string): ParsedPrice | null {
     const match = cleanText.match(pattern);
     if (match && match.groups) {
       const priceStr = match.groups.price || match[1];
-      const currencySymbol = match.groups.currency || '$';
+      const currencySymbol = (match.groups.currency || '').toUpperCase();
 
       if (priceStr) {
         const price = normalizePrice(priceStr);
         if (price !== null && price > 0) {
-          const currency = currencyMap[currencySymbol] || 'USD';
-          return { price, currency };
+          // If it matches a 3-letter code not in the map, use it directly (e.g., 'CAD', 'AED')
+          const is3LetterCode = /^[A-Z]{3}$/.test(currencySymbol);
+          let currency = currencyMap[currencySymbol] || currencyMap[match.groups.currency];
+          
+          if (!currency && is3LetterCode) {
+            currency = currencySymbol;
+          }
+          
+          return { price, currency: currency || defaultCurrency };
         }
       }
     }
@@ -72,7 +100,7 @@ export function parsePrice(text: string): ParsedPrice | null {
   if (numberMatch) {
     const price = normalizePrice(numberMatch[0]);
     if (price !== null && price > 0) {
-      return { price, currency: 'USD' };
+      return { price, currency: defaultCurrency };
     }
   }
 
