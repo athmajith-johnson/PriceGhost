@@ -37,23 +37,28 @@ export function SortableProductCard({
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
   };
 
   return (
     <div ref={setNodeRef} style={style}>
-      <div className="drag-handle" {...attributes} {...listeners} style={{ cursor: 'grab', padding: '0.5rem', opacity: 0.5 }}>
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+      <div className="drag-handle" {...attributes} {...listeners} style={{ cursor: 'grab', padding: '0.25rem', opacity: 0.5, flexShrink: 0 }}>
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
           <path d="M8 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm12-12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0z" />
         </svg>
       </div>
-      <ProductCard
-        product={product}
-        onDelete={onDelete}
-        onRefresh={onRefresh}
-        showCheckbox={true}
-        isSelected={isSelected}
-        onSelect={onSelect}
-      />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <ProductCard
+          product={product}
+          onDelete={onDelete}
+          onRefresh={onRefresh}
+          showCheckbox={true}
+          isSelected={isSelected}
+          onSelect={onSelect}
+        />
+      </div>
     </div>
   );
 }
