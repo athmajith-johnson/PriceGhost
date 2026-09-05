@@ -1118,22 +1118,37 @@ export default function Dashboard() {
           </p>
           <div className="groups-container" style={{ marginTop: '2rem' }}>
             {isCreatingGroup ? (
-              <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+              <div style={{ 
+                display: 'flex', gap: '0.5rem', marginBottom: '2rem', 
+                background: 'var(--surface-50)', padding: '1rem', 
+                borderRadius: '8px', border: '1px solid var(--border)' 
+              }}>
                 <input
                   type="text"
-                  placeholder="Group name"
+                  placeholder="Enter new group name..."
                   value={newGroupName}
                   onChange={(e) => setNewGroupName(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleCreateGroup()}
                   autoFocus
-                  style={{ flex: 1, padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)' }}
+                  style={{ 
+                    flex: 1, padding: '0.5rem 1rem', borderRadius: '6px', 
+                    border: '1px solid var(--border)', background: 'var(--bg)', 
+                    color: 'var(--text)', fontSize: '1.125rem'
+                  }}
                 />
-                <button className="btn btn-primary" onClick={handleCreateGroup}>Save</button>
+                <button className="btn btn-primary" onClick={handleCreateGroup}>Save Group</button>
                 <button className="btn btn-secondary" onClick={() => { setIsCreatingGroup(false); setNewGroupName(''); }}>Cancel</button>
               </div>
             ) : (
-              <button className="btn btn-secondary" onClick={() => setIsCreatingGroup(true)} style={{ marginBottom: '1rem' }}>
-                + Create Group
+              <button 
+                className="btn btn-secondary" 
+                onClick={() => setIsCreatingGroup(true)} 
+                style={{ 
+                  marginBottom: '2rem', width: '100%', padding: '1rem', 
+                  borderStyle: 'dashed', background: 'transparent' 
+                }}
+              >
+                <span style={{ fontSize: '1.125rem' }}>+ Create New Group</span>
               </button>
             )}
 
