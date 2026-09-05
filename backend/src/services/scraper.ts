@@ -333,6 +333,97 @@ interface SiteScraper {
 }
 
 const siteScrapers: SiteScraper[] = [
+  // Flipkart
+  {
+    match: (url) => /flipkart\.com/i.test(url),
+    scrape: ($) => {
+      let price: ParsedPrice | null = null;
+      let name: string | null = null;
+      let imageUrl: string | null = null;
+      let stockStatus: StockStatus = 'unknown';
+
+      // 1. Try to extract price from Flipkart's common price classes
+      const priceSelectors = [
+        'div.Nx9bqj.CxhGGd', // New product page class
+        'div._30jeq3._16Jk6d', // Old product page class
+        'div.hl05eU',
+        '.a-price-whole'
+      ];
+
+      for (const selector of priceSelectors) {
+        const el = $(selector).first();
+        if (el.length) {
+          const text = el.text().trim();
+          const parsed = parsePrice(text);
+          if (parsed && parsed.price > 0) {
+            price = parsed;
+            // Force INR if currency wasn't picked up correctly from ₹ symbol
+            if (text.includes('₹') || price.currency === 'USD') {
+              price.currency = 'INR';
+            }
+            break;
+          }
+        }
+      }
+
+      // 2. Extract Product Name
+      const nameSelectors = [
+        'span.VU-Tz5', // New title class
+        'span.B_NuCI', // Old title class
+        'h1 .title'
+      ];
+
+      for (const selector of nameSelectors) {
+        const el = $(selector).first();
+        if (el.length) {
+          name = el.text().trim();
+          break;
+        }
+      }
+
+      // 3. Extract Image URL
+      const imgSelectors = [
+        'img.DByuf4', // New image class
+        'img._396cs4', // Old image class
+        '.CXW8mj img'
+      ];
+
+      for (const selector of imgSelectors) {
+        const el = $(selector).first();
+        if (el.length) {
+          imageUrl = el.attr('src') || el.attr('data-src') || null;
+          if (imageUrl) break;
+        }
+      }
+
+      // 4. Check Stock Status
+      const outOfStockSelectors = [
+        'div._16FRp0',
+        '.G6XhRU' // "Sold Out" text class
+      ];
+
+      // Default to in stock if we found a price, then verify if it's out of stock
+      if (price) {
+        stockStatus = 'in_stock';
+      }
+
+      for (const selector of outOfStockSelectors) {
+        const text = $(selector).text().toLowerCase();
+        if (text.includes('sold out') || text.includes('currently unavailable') || text.includes('out of stock')) {
+          stockStatus = 'out_of_stock';
+          break;
+        }
+      }
+      
+      // Also check buttons
+      if ($('button.QqFHMw').text().toLowerCase().includes('notify me')) {
+        stockStatus = 'out_of_stock';
+      }
+
+      return { name, price, imageUrl, stockStatus };
+    },
+  },
+
   // Amazon
   {
     match: (url) => /amazon\.(com|co\.uk|ca|de|fr|es|it|co\.jp|in|com\.au)/i.test(url),
