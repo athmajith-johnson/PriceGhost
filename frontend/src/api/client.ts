@@ -68,6 +68,8 @@ export interface Product {
   ai_verification_disabled: boolean;
   ai_extraction_disabled: boolean;
   checking_paused: boolean;
+  group_id: number | null;
+  order_index: number;
   created_at: string;
   current_price: number | null;
   currency: string | null;
@@ -143,6 +145,26 @@ export const productsApi = {
 
   bulkPause: (ids: number[], paused: boolean) =>
     api.post<{ message: string; updated: number }>('/products/bulk/pause', { ids, paused }),
+
+  reorder: (updates: { id: number; group_id: number | null; order_index: number }[]) =>
+    api.post<{ message: string }>('/products/reorder', { updates }),
+};
+
+// Groups API
+export interface ProductGroup {
+  id: number;
+  user_id: number;
+  name: string;
+  order_index: number;
+  created_at: string;
+}
+
+export const groupsApi = {
+  getAll: () => api.get<ProductGroup[]>('/groups'),
+  create: (name: string) => api.post<ProductGroup>('/groups', { name }),
+  update: (id: number, name: string) => api.put<ProductGroup>(`/groups/${id}`, { name }),
+  delete: (id: number) => api.delete<{ message: string }>(`/groups/${id}`),
+  reorder: (groupIds: number[]) => api.post<{ message: string }>('/groups/reorder', { groupIds }),
 };
 
 // Prices API

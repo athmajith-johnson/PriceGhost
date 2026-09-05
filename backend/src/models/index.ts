@@ -354,6 +354,14 @@ export const systemSettingsQueries = {
 // Product types and queries
 export type StockStatus = 'in_stock' | 'out_of_stock' | 'unknown';
 
+export interface ProductGroup {
+  id: number;
+  user_id: number;
+  name: string;
+  order_index: number;
+  created_at: Date;
+}
+
 export interface Product {
   id: number;
   user_id: number;
@@ -367,9 +375,15 @@ export interface Product {
   price_drop_threshold: number | null;
   target_price: number | null;
   notify_back_in_stock: boolean;
+  preferred_extraction_method: string | null;
+  needs_price_review: boolean;
+  price_candidates: any[] | null;
+  anchor_price: number | null;
   ai_verification_disabled: boolean;
   ai_extraction_disabled: boolean;
   checking_paused: boolean;
+  group_id: number | null;
+  order_index: number;
   created_at: Date;
 }
 
@@ -407,7 +421,7 @@ export const productQueries = {
          LIMIT 1
        ) ph ON true
        WHERE p.user_id = $1
-       ORDER BY p.created_at DESC`,
+       ORDER BY p.order_index ASC, p.created_at DESC`,
       [userId]
     );
     return result.rows;
@@ -425,7 +439,7 @@ export const productQueries = {
          LIMIT 1
        ) ph ON true
        WHERE p.user_id = $1
-       ORDER BY p.created_at DESC`,
+       ORDER BY p.order_index ASC, p.created_at DESC`,
       [userId]
     );
 
@@ -673,6 +687,25 @@ export const productQueries = {
     );
     return result.rowCount || 0;
   },
+
+  reorder: async (userId: number, updates: { id: number; group_id: number | null; order_index: number }[]): Promise<void> => {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      for (const update of updates) {
+        await client.query(
+          'UPDATE products SET group_id = $1, order_index = $2 WHERE id = $3 AND user_id = $4',
+          [update.group_id, update.order_index, update.id, userId]
+        );
+      }
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+  }
 };
 
 // Price History types and queries
@@ -1031,4 +1064,65 @@ export const notificationHistoryQueries = {
     );
     return result.rowCount || 0;
   },
+};
+
+export const groupQueries = {
+  findByUserId: async (userId: number): Promise<ProductGroup[]> => {
+    const result = await pool.query(
+      'SELECT * FROM product_groups WHERE user_id = $1 ORDER BY order_index ASC, created_at ASC',
+      [userId]
+    );
+    return result.rows;
+  },
+
+  create: async (userId: number, name: string): Promise<ProductGroup> => {
+    // Get max order index
+    const countResult = await pool.query(
+      'SELECT COALESCE(MAX(order_index), -1) as max_idx FROM product_groups WHERE user_id = $1',
+      [userId]
+    );
+    const orderIndex = countResult.rows[0].max_idx + 1;
+
+    const result = await pool.query(
+      'INSERT INTO product_groups (user_id, name, order_index) VALUES ($1, $2, $3) RETURNING *',
+      [userId, name, orderIndex]
+    );
+    return result.rows[0];
+  },
+
+  update: async (id: number, userId: number, name: string): Promise<ProductGroup | null> => {
+    const result = await pool.query(
+      'UPDATE product_groups SET name = $1 WHERE id = $2 AND user_id = $3 RETURNING *',
+      [name, id, userId]
+    );
+    return result.rows[0] || null;
+  },
+
+  updateOrders: async (userId: number, groupIds: number[]): Promise<void> => {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      for (let i = 0; i < groupIds.length; i++) {
+        await client.query(
+          'UPDATE product_groups SET order_index = $1 WHERE id = $2 AND user_id = $3',
+          [i, groupIds[i], userId]
+        );
+      }
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+  },
+
+  delete: async (id: number, userId: number): Promise<boolean> => {
+    // Products will have their group_id set to NULL automatically due to ON DELETE SET NULL
+    const result = await pool.query(
+      'DELETE FROM product_groups WHERE id = $1 AND user_id = $2',
+      [id, userId]
+    );
+    return (result.rowCount ?? 0) > 0;
+  }
 };

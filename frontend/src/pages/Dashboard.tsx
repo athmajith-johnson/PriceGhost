@@ -1,9 +1,23 @@
 import { useState, useEffect, useMemo } from 'react';
+import {
+  DndContext,
+  DragOverlay,
+  closestCorners,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragStartEvent,
+  DragOverEvent,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import { SortableContext, arrayMove, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import Layout from '../components/Layout';
-import ProductCard from '../components/ProductCard';
 import ProductForm from '../components/ProductForm';
 import PriceSelectionModal from '../components/PriceSelectionModal';
-import { productsApi, pricesApi, Product, PriceReviewResponse } from '../api/client';
+import { productsApi, pricesApi, groupsApi, Product, ProductGroup, PriceReviewResponse } from '../api/client';
+import { SortableGroup } from '../components/SortableGroup';
+import { SortableProductCard } from '../components/SortableProductCard';
 
 // Type guard to check if response needs review
 function isPriceReviewResponse(response: Product | PriceReviewResponse): response is PriceReviewResponse {
@@ -23,6 +37,11 @@ const SORT_OPTIONS: { value: SortOption; label: string }[] = [
 
 export default function Dashboard() {
   const [products, setProducts] = useState<Product[]>([]);
+  const [groups, setGroups] = useState<ProductGroup[]>([]);
+  const [activeDragItem, setActiveDragItem] = useState<{ type: 'Group' | 'Product', id: string, data: any } | null>(null);
+  const [isCreatingGroup, setIsCreatingGroup] = useState(false);
+  const [newGroupName, setNewGroupName] = useState('');
+
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -45,19 +64,34 @@ export default function Dashboard() {
   const [priceReviewData, setPriceReviewData] = useState<PriceReviewResponse | null>(null);
   const [pendingRefreshInterval, setPendingRefreshInterval] = useState<number>(3600);
 
-  const fetchProducts = async () => {
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 5,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const fetchData = async () => {
     try {
-      const response = await productsApi.getAll();
-      setProducts(response.data);
+      const [productsRes, groupsRes] = await Promise.all([
+        productsApi.getAll(),
+        groupsApi.getAll()
+      ]);
+      setProducts(productsRes.data);
+      setGroups(groupsRes.data);
     } catch {
-      setError('Failed to load products');
+      setError('Failed to load data');
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchProducts();
+    fetchData();
   }, []);
 
   useEffect(() => {
@@ -107,6 +141,122 @@ export default function Dashboard() {
     setPriceReviewData(null);
   };
 
+  const handleCreateGroup = async () => {
+    if (!newGroupName.trim()) return;
+    try {
+      const res = await groupsApi.create(newGroupName.trim());
+      setGroups(prev => [...prev, res.data]);
+      setNewGroupName('');
+      setIsCreatingGroup(false);
+    } catch {
+      alert('Failed to create group');
+    }
+  };
+
+  const handleRenameGroup = async (id: number, name: string) => {
+    try {
+      const res = await groupsApi.update(id, name);
+      setGroups(prev => prev.map(g => g.id === id ? res.data : g));
+    } catch {
+      alert('Failed to rename group');
+    }
+  };
+
+  const handleDeleteGroup = async (id: number) => {
+    if (!confirm('Are you sure you want to delete this group? Products will become ungrouped.')) return;
+    try {
+      await groupsApi.delete(id);
+      setGroups(prev => prev.filter(g => g.id !== id));
+      setProducts(prev => prev.map(p => p.group_id === id ? { ...p, group_id: null } : p));
+    } catch {
+      alert('Failed to delete group');
+    }
+  };
+
+  const handleDragStart = (event: DragStartEvent) => {
+    const { active } = event;
+    setActiveDragItem({
+      type: active.data.current?.type,
+      id: active.id as string,
+      data: active.data.current,
+    });
+  };
+
+  const handleDragOver = (event: DragOverEvent) => {
+    const { active, over } = event;
+    if (!over) return;
+
+    const activeId = active.id;
+    const overId = over.id;
+
+    if (activeId === overId) return;
+
+    const isActiveProduct = active.data.current?.type === 'Product';
+    const isOverProduct = over.data.current?.type === 'Product';
+    const isOverGroup = over.data.current?.type === 'Group';
+
+    if (!isActiveProduct) return;
+
+    // Moving a Product over another Product
+    if (isActiveProduct && isOverProduct) {
+      setProducts((prev) => {
+        const activeIndex = prev.findIndex((p) => `product-${p.id}` === activeId);
+        const overIndex = prev.findIndex((p) => `product-${p.id}` === overId);
+        
+        if (prev[activeIndex].group_id !== prev[overIndex].group_id) {
+          const newProducts = [...prev];
+          newProducts[activeIndex] = { ...newProducts[activeIndex], group_id: prev[overIndex].group_id };
+          return arrayMove(newProducts, activeIndex, overIndex);
+        }
+        
+        return arrayMove(prev, activeIndex, overIndex);
+      });
+    }
+
+    // Moving a Product over an empty Group
+    if (isActiveProduct && isOverGroup) {
+      setProducts((prev) => {
+        const activeIndex = prev.findIndex((p) => `product-${p.id}` === activeId);
+        const newProducts = [...prev];
+        const newGroupId = over.data.current?.group.id === 'ungrouped' ? null : over.data.current?.group.id;
+        newProducts[activeIndex] = { ...newProducts[activeIndex], group_id: newGroupId };
+        return newProducts;
+      });
+    }
+  };
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    setActiveDragItem(null);
+    const { active, over } = event;
+    if (!over) return;
+
+    if (active.data.current?.type === 'Group' && over.data.current?.type === 'Group') {
+      if (active.id !== over.id) {
+        setGroups((prev) => {
+          const activeIndex = prev.findIndex((g) => `group-${g.id}` === active.id);
+          const overIndex = prev.findIndex((g) => `group-${g.id}` === over.id);
+          const newGroups = arrayMove(prev, activeIndex, overIndex);
+          
+          // Save to backend
+          groupsApi.reorder(newGroups.map(g => g.id)).catch(() => {
+            alert('Failed to save group order');
+          });
+          
+          return newGroups;
+        });
+      }
+    } else if (active.data.current?.type === 'Product') {
+      // Products order has already been updated locally by handleDragOver
+      // Now save the new order & group_id of all products to backend
+      const updates = products.map((p, idx) => ({ id: p.id, group_id: p.group_id, order_index: idx }));
+      try {
+        await productsApi.reorder(updates);
+      } catch {
+        alert('Failed to save product order');
+      }
+    }
+  };
+
   const handleDeleteProduct = async (id: number) => {
     if (!confirm('Are you sure you want to stop tracking this product?')) {
       return;
@@ -124,7 +274,7 @@ export default function Dashboard() {
     try {
       await pricesApi.refresh(id);
       // Refresh the products list to get updated data
-      await fetchProducts();
+      await fetchData();
     } catch {
       alert('Failed to refresh price');
     }
@@ -966,18 +1116,82 @@ export default function Dashboard() {
               ? `${products.length} product${products.length !== 1 ? 's' : ''}`
               : `${filteredAndSortedProducts.length} of ${products.length} products`}
           </p>
-          <div className="products-list">
-            {filteredAndSortedProducts.map((product) => (
-              <ProductCard
-                key={product.id}
-                product={product}
-                onDelete={handleDeleteProduct}
-                onRefresh={handleRefreshProduct}
-                showCheckbox={true}
-                isSelected={selectedIds.has(product.id)}
-                onSelect={handleSelectProduct}
+          <div className="groups-container" style={{ marginTop: '2rem' }}>
+            {isCreatingGroup ? (
+              <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+                <input
+                  type="text"
+                  placeholder="Group name"
+                  value={newGroupName}
+                  onChange={(e) => setNewGroupName(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleCreateGroup()}
+                  autoFocus
+                  style={{ flex: 1, padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)' }}
+                />
+                <button className="btn btn-primary" onClick={handleCreateGroup}>Save</button>
+                <button className="btn btn-secondary" onClick={() => { setIsCreatingGroup(false); setNewGroupName(''); }}>Cancel</button>
+              </div>
+            ) : (
+              <button className="btn btn-secondary" onClick={() => setIsCreatingGroup(true)} style={{ marginBottom: '1rem' }}>
+                + Create Group
+              </button>
+            )}
+
+            <DndContext 
+              sensors={sensors}
+              collisionDetection={closestCorners}
+              onDragStart={handleDragStart}
+              onDragOver={handleDragOver}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext items={groups.map(g => `group-${g.id}`)} strategy={verticalListSortingStrategy}>
+                {groups.map(group => {
+                   const groupProducts = filteredAndSortedProducts.filter(p => p.group_id === group.id);
+                   return (
+                     <SortableGroup
+                       key={`group-${group.id}`}
+                       group={group}
+                       products={groupProducts}
+                       onDeleteProduct={handleDeleteProduct}
+                       onRefreshProduct={handleRefreshProduct}
+                       selectedIds={selectedIds}
+                       onSelectProduct={handleSelectProduct}
+                       onRenameGroup={handleRenameGroup}
+                       onDeleteGroup={handleDeleteGroup}
+                     />
+                   );
+                })}
+              </SortableContext>
+              
+              {/* Ungrouped */}
+              <SortableGroup
+                key="group-ungrouped"
+                group={{ id: 'ungrouped' as any, name: 'Ungrouped' } as any}
+                products={filteredAndSortedProducts.filter(p => !p.group_id)}
+                onDeleteProduct={handleDeleteProduct}
+                onRefreshProduct={handleRefreshProduct}
+                selectedIds={selectedIds}
+                onSelectProduct={handleSelectProduct}
               />
-            ))}
+              
+              <DragOverlay>
+                {activeDragItem ? (
+                  activeDragItem.type === 'Product' ? (
+                     <SortableProductCard 
+                       product={activeDragItem.data.product} 
+                       onDelete={() => {}} 
+                       onRefresh={async () => {}} 
+                       isSelected={false} 
+                       onSelect={() => {}} 
+                     />
+                  ) : (
+                     <div style={{ background: 'var(--surface-50)', padding: '1rem', border: '1px solid var(--primary)', borderRadius: '8px' }}>
+                       {activeDragItem.data.group?.name}
+                     </div>
+                  )
+                ) : null}
+              </DragOverlay>
+            </DndContext>
           </div>
         </>
       )}

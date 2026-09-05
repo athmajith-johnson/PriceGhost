@@ -9,6 +9,7 @@ import settingsRoutes from './routes/settings';
 import profileRoutes from './routes/profile';
 import adminRoutes from './routes/admin';
 import notificationRoutes from './routes/notifications';
+import groupRoutes from './routes/groups';
 import { startScheduler } from './services/scheduler';
 import pool from './config/database';
 
@@ -240,6 +241,30 @@ async function runMigrations() {
         ON notification_history(product_id);
     `);
 
+    // Create product_groups table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS product_groups (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        name VARCHAR(255) NOT NULL,
+        order_index INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // Add group_id and order_index to products table
+    await client.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'products' AND column_name = 'group_id') THEN
+          ALTER TABLE products ADD COLUMN group_id INTEGER REFERENCES product_groups(id) ON DELETE SET NULL;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'products' AND column_name = 'order_index') THEN
+          ALTER TABLE products ADD COLUMN order_index INTEGER DEFAULT 0;
+        END IF;
+      END $$;
+    `);
+
     console.log('Database migrations completed');
   } catch (error) {
     console.error('Migration error:', error);
@@ -272,6 +297,7 @@ app.use('/api/settings', settingsRoutes);
 app.use('/api/profile', profileRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/groups', groupRoutes);
 
 // Error handling middleware
 app.use(

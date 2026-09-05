@@ -294,5 +294,23 @@ router.post('/bulk/pause', async (req: AuthRequest, res: Response) => {
     res.status(500).json({ error: 'Failed to update pause status' });
   }
 });
+// Reorder products
+router.post('/reorder', async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.userId!;
+    const { updates } = req.body;
+
+    if (!Array.isArray(updates)) {
+      res.status(400).json({ error: 'Updates array is required' });
+      return;
+    }
+
+    await productQueries.reorder(userId, updates);
+    res.json({ message: 'Products reordered successfully' });
+  } catch (error) {
+    console.error('Error reordering products:', error);
+    res.status(500).json({ error: 'Failed to reorder products' });
+  }
+});
 
 export default router;
