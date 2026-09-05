@@ -261,6 +261,12 @@ function extractGenericCssCandidates($: CheerioAPI): PriceCandidate[] {
 async function scrapeWithBrowser(url: string): Promise<string> {
   const browser = await puppeteer.launch({
     headless: true,
+    userDataDir: '/tmp/puppeteer_user_data',
+    env: {
+      ...process.env,
+      XDG_CONFIG_HOME: '/tmp/.chromium',
+      XDG_CACHE_HOME: '/tmp/.chromium',
+    },
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
