@@ -72,7 +72,7 @@ export default function PriceChart({
 
   const formatDate = (timestamp: number) => {
     const date = new Date(timestamp);
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   };
 
   const formatPrice = (value: number) => {
@@ -239,7 +239,7 @@ export default function PriceChart({
             <Tooltip
               formatter={(value: number) => [formatPrice(value), 'Price']}
               labelFormatter={(label) =>
-                new Date(label).toLocaleDateString('en-US', {
+                new Date(label).toLocaleDateString(undefined, {
                   weekday: 'short',
                   month: 'short',
                   day: 'numeric',
