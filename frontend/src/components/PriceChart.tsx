@@ -58,9 +58,6 @@ export default function PriceChart({
     onRangeChange?.(days);
   };
 
-  const currencySymbol =
-    currency === 'EUR' ? '€' : currency === 'GBP' ? '£' : currency === 'CHF' ? 'CHF ' : '$';
-
   const chartData = prices.map((p) => ({
     date: new Date(p.recorded_at).getTime(),
     price: typeof p.price === 'string' ? parseFloat(p.price) : p.price,
@@ -80,7 +77,14 @@ export default function PriceChart({
 
   const formatPrice = (value: number) => {
     if (value === null || value === undefined || isNaN(value)) return 'N/A';
-    return `${currencySymbol}${value.toFixed(2)}`;
+    try {
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: currency || 'USD',
+      }).format(value);
+    } catch (e) {
+      return `${currency || 'USD'} ${value.toFixed(2)}`;
+    }
   };
 
   if (prices.length === 0) {
