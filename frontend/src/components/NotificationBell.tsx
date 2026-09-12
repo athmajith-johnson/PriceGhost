@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { notificationsApi, NotificationHistoryEntry } from '../api/client';
+import { formatPrice as formatCurrency } from '../utils/currency';
 
 function formatTimeAgo(dateString: string): string {
   const date = new Date(dateString);
@@ -51,8 +52,7 @@ function formatPrice(price: number | string | null, currency: string | null): st
   if (price === null || price === undefined) return '';
   const numPrice = typeof price === 'string' ? parseFloat(price) : price;
   if (isNaN(numPrice)) return '';
-  const symbol = currency === 'EUR' ? '\u20AC' : currency === 'GBP' ? '\u00A3' : '$';
-  return `${symbol}${numPrice.toFixed(2)}`;
+  return formatCurrency(numPrice, currency || 'USD');
 }
 
 export default function NotificationBell() {
