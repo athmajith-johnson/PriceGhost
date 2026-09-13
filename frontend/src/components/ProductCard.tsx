@@ -13,9 +13,10 @@ interface ProductCardProps {
   onSelect?: (id: number, selected: boolean) => void;
   showCheckbox?: boolean;
   dragHandle?: React.ReactNode;
+  onTriggerPriceReview?: (id: number) => void;
 }
 
-export default function ProductCard({ product, onDelete, onRefresh, isSelected, onSelect, showCheckbox, dragHandle }: ProductCardProps) {
+export default function ProductCard({ product, onDelete, onRefresh, isSelected, onSelect, showCheckbox, dragHandle, onTriggerPriceReview }: ProductCardProps) {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [timeRemaining, setTimeRemaining] = useState('');
@@ -581,6 +582,18 @@ export default function ProductCard({ product, onDelete, onRefresh, isSelected, 
             <line x1="10" y1="14" x2="21" y2="3" />
           </svg>
         </a>
+        {onTriggerPriceReview && (
+          <button
+            className="btn btn-secondary btn-icon"
+            onClick={() => onTriggerPriceReview(product.id)}
+            title="Edit Price Source"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+              <path d="m15 5 4 4" />
+            </svg>
+          </button>
+        )}
         <button
           className={`btn btn-secondary btn-icon ${isRefreshing ? 'refreshing' : ''}`}
           onClick={handleRefresh}

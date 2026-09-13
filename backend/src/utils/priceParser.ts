@@ -1,3 +1,7 @@
+import { config } from 'dotenv';
+
+config();
+
 export interface ParsedPrice {
   price: number;
   currency: string;
@@ -48,8 +52,6 @@ const pricePatterns = [
   /(?<price>[\d,]+\.?\d*)\s*(?<currency>[A-Z]{3})/i,
   // AED 29.99 (Any 3 uppercase letters before price)
   /(?<currency>[A-Z]{3})\s*(?<price>[\d,]+\.?\d*)/i,
-  // Plain number with optional decimal (fallback)
-  /(?<price>\d{1,3}(?:[,.\s]?\d{3})*(?:[.,]\d{2})?)/,
 ];
 
 export function parsePrice(text: string, defaultCurrency: string = 'USD'): ParsedPrice | null {
@@ -95,12 +97,19 @@ export function parsePrice(text: string, defaultCurrency: string = 'USD'): Parse
     }
   }
 
-  // Try to extract just a number as fallback
-  const numberMatch = cleanText.match(/[\d,]+\.?\d*/);
-  if (numberMatch) {
-    const price = normalizePrice(numberMatch[0]);
-    if (price !== null && price > 0) {
-      return { price, currency: defaultCurrency };
+  // Fallback: Try to extract all numbers and pick the LARGEST one.
+  // This avoids picking '14' from a string like 'IFB 14 Place Settings ... 42790'
+  const numberMatches = cleanText.match(/[\d,]+\.?\d*/g);
+  if (numberMatches) {
+    let maxPrice = 0;
+    for (const match of numberMatches) {
+      const price = normalizePrice(match);
+      if (price !== null && price > maxPrice) {
+        maxPrice = price;
+      }
+    }
+    if (maxPrice > 0) {
+      return { price: maxPrice, currency: defaultCurrency };
     }
   }
 

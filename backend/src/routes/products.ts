@@ -24,7 +24,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 router.post('/', async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.userId!;
-    const { url, refresh_interval, selectedPrice, selectedMethod, selectedCurrency } = req.body;
+    const { url, refresh_interval, selectedPrice, selectedMethod, selectedCurrency, isOutOfStockOverride } = req.body;
 
     if (!url) {
       res.status(400).json({ error: 'URL is required' });
@@ -36,6 +36,28 @@ router.post('/', async (req: AuthRequest, res: Response) => {
       new URL(url);
     } catch {
       res.status(400).json({ error: 'Invalid URL format' });
+      return;
+    }
+
+    // If user overrides and explicitly declares the product is out of stock
+    if (isOutOfStockOverride) {
+      // Still scrape for name and image
+      const scrapedData = await scrapeProduct(url, userId);
+
+      const product = await productQueries.create(
+        userId,
+        url,
+        scrapedData.name,
+        scrapedData.imageUrl,
+        refresh_interval || 3600,
+        'out_of_stock'
+      );
+      
+      await stockStatusHistoryQueries.recordChange(product.id, 'out_of_stock');
+      await productQueries.updateLastChecked(product.id, product.refresh_interval);
+
+      const productWithPrice = await productQueries.findById(product.id, userId);
+      res.status(201).json(productWithPrice);
       return;
     }
 
@@ -310,6 +332,109 @@ router.post('/reorder', async (req: AuthRequest, res: Response) => {
   } catch (error) {
     console.error('Error reordering products:', error);
     res.status(500).json({ error: 'Failed to reorder products' });
+  }
+});
+
+// Fetch price candidates for manual price source selection
+router.post('/:id/candidates', async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.userId!;
+    const productId = parseInt(req.params.id, 10);
+
+    if (isNaN(productId)) {
+      res.status(400).json({ error: 'Invalid product ID' });
+      return;
+    }
+
+    const product = await productQueries.findById(productId, userId);
+    if (!product) {
+      res.status(404).json({ error: 'Product not found' });
+      return;
+    }
+
+    // Pass true for skipAiVerification and skipAiExtraction because we want RAW candidates
+    const scrapedData = await scrapeProductWithVoting(product.url, userId, undefined, undefined, true, true);
+
+    const candidates = scrapedData.priceCandidates.length > 0
+      ? scrapedData.priceCandidates
+      : scrapedData.price
+        ? [{
+            price: scrapedData.price.price,
+            currency: scrapedData.price.currency,
+            method: scrapedData.selectedMethod || 'ai',
+            context: 'Extracted price',
+            confidence: 0.8
+          }]
+        : [];
+
+    res.status(200).json({
+      needsReview: true,
+      name: scrapedData.name || product.name,
+      imageUrl: scrapedData.imageUrl || product.image_url,
+      stockStatus: scrapedData.stockStatus,
+      priceCandidates: candidates.map(c => ({
+        price: c.price,
+        currency: c.currency,
+        method: c.method,
+        context: c.context,
+        confidence: c.confidence,
+      })),
+      suggestedPrice: scrapedData.price,
+      url: product.url,
+    });
+  } catch (error) {
+    console.error('Error fetching candidates:', error);
+    res.status(500).json({ error: 'Failed to fetch price candidates' });
+  }
+});
+
+// Update the price source (anchor price and preferred method)
+router.post('/:id/source', async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.userId!;
+    const productId = parseInt(req.params.id, 10);
+    const { selectedPrice, selectedMethod, selectedCurrency, isOutOfStockOverride } = req.body;
+
+    if (isNaN(productId)) {
+      res.status(400).json({ error: 'Invalid product ID' });
+      return;
+    }
+
+    const product = await productQueries.findById(productId, userId);
+    if (!product) {
+      res.status(404).json({ error: 'Product not found' });
+      return;
+    }
+
+    if (isOutOfStockOverride) {
+      await productQueries.updateStockStatus(productId, 'out_of_stock');
+      await stockStatusHistoryQueries.recordChange(productId, 'out_of_stock');
+      const updatedProduct = await productQueries.findById(productId, userId);
+      res.json(updatedProduct);
+      return;
+    }
+
+    if (selectedPrice !== undefined && selectedMethod) {
+      await productQueries.updateExtractionMethod(productId, selectedMethod);
+      await productQueries.updateAnchorPrice(productId, selectedPrice);
+
+      // Record the user-selected price
+      await priceHistoryQueries.create(
+        productId,
+        selectedPrice,
+        selectedCurrency || 'USD',
+        'verified' // Force verified since user picked it
+      );
+      
+      const updatedProduct = await productQueries.findById(productId, userId);
+      res.json(updatedProduct);
+      return;
+    }
+
+    res.status(400).json({ error: 'Missing selected price or method' });
+  } catch (error) {
+    console.error('Error updating price source:', error);
+    res.status(500).json({ error: 'Failed to update price source' });
   }
 });
 

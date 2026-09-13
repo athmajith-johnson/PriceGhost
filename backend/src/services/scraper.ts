@@ -232,7 +232,20 @@ function extractGenericCssCandidates($: CheerioAPI): PriceCandidate[] {
 
       if (!parsed) {
         const priceStr = content || dataPrice || text;
-        parsed = parsePrice(priceStr);
+        
+        let defaultCurrency = 'USD';
+        const dataCurrencyCode = $el.attr('data-currencycode') || $el.attr('data-currency');
+        if (dataCurrencyCode && /^[A-Z]{3}$/i.test(dataCurrencyCode)) {
+          defaultCurrency = dataCurrencyCode.toUpperCase();
+        } else {
+           const symbolMatch = text.match(/([$€£¥₹])/);
+           if (symbolMatch) {
+             const symbolMap: Record<string, string> = { '$': 'USD', '€': 'EUR', '£': 'GBP', '¥': 'JPY', '₹': 'INR' };
+             defaultCurrency = symbolMap[symbolMatch[1]] || 'USD';
+           }
+        }
+        
+        parsed = parsePrice(priceStr, defaultCurrency);
         if (parsed) {
           context = text.trim().slice(0, 50);
         }

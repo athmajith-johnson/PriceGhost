@@ -494,13 +494,35 @@ router.post('/ai/test-gemini', async (req: AuthRequest, res: Response) => {
     const { GoogleGenerativeAI } = await import('@google/generative-ai');
     const genAI = new GoogleGenerativeAI(api_key);
 
+    // Fetch available models first
+    let availableModels: string[] = [];
+    let modelToTest = 'gemini-3.6-flash'; // fallback
+    try {
+      const axios = (await import('axios')).default;
+      const response = await axios.get(`https://generativelanguage.googleapis.com/v1beta/models?key=${api_key}`);
+      if (response.data && response.data.models) {
+        availableModels = response.data.models
+          .filter((m: any) => m.name.includes('gemini') && !m.name.includes('2.5') && m.supportedGenerationMethods?.includes('generateContent'))
+          .map((m: any) => m.name.replace('models/', ''));
+          
+        if (availableModels.length > 0) {
+          modelToTest = availableModels[0];
+          console.log('[AI] Found models:', availableModels);
+        }
+      }
+    } catch (e) {
+      console.error('Error fetching Gemini models list:', e);
+    }
+
+    console.log(`[AI] Testing with model: ${modelToTest}`);
     // Try to generate a simple response to verify the key works
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
+    const model = genAI.getGenerativeModel({ model: modelToTest });
     await model.generateContent('Say "API key valid" in 3 words or less');
 
     res.json({
       success: true,
       message: 'Successfully connected to Gemini API',
+      models: availableModels,
     });
   } catch (error) {
     console.error('Error testing Gemini connection:', error);

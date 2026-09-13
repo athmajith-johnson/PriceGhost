@@ -9,6 +9,7 @@ interface Props {
   onRefresh: (id: number) => Promise<void>;
   isSelected: boolean;
   onSelect: (id: number, selected: boolean) => void;
+  onTriggerPriceReview?: (id: number) => void;
 }
 
 export function SortableProductCard({
@@ -17,6 +18,7 @@ export function SortableProductCard({
   onRefresh,
   isSelected,
   onSelect,
+  onTriggerPriceReview,
 }: Props) {
   const {
     attributes,
@@ -57,6 +59,7 @@ export function SortableProductCard({
         isSelected={isSelected}
         onSelect={onSelect}
         dragHandle={dragHandle}
+        onTriggerPriceReview={onTriggerPriceReview}
       />
     </div>
   );

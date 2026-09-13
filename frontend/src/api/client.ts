@@ -122,13 +122,14 @@ export const productsApi = {
 
   getById: (id: number) => api.get<ProductWithStats>(`/products/${id}`),
 
-  create: (url: string, refreshInterval?: number, selectedPrice?: number, selectedMethod?: string, selectedCurrency?: string) =>
+  create: (url: string, refreshInterval?: number, selectedPrice?: number, selectedMethod?: string, selectedCurrency?: string, isOutOfStockOverride?: boolean) =>
     api.post<CreateProductResponse>('/products', {
       url,
       refresh_interval: refreshInterval,
       selectedPrice,
       selectedMethod,
       selectedCurrency,
+      isOutOfStockOverride,
     }),
 
   update: (id: number, data: {
@@ -142,6 +143,16 @@ export const productsApi = {
   }) => api.put<Product>(`/products/${id}`, data),
 
   delete: (id: number) => api.delete(`/products/${id}`),
+
+  fetchCandidates: (id: number) => api.post<PriceReviewResponse>(`/products/${id}/candidates`),
+
+  updateSource: (id: number, selectedPrice?: number, selectedMethod?: string, selectedCurrency?: string, isOutOfStockOverride?: boolean) =>
+    api.post<Product>(`/products/${id}/source`, {
+      selectedPrice,
+      selectedMethod,
+      selectedCurrency,
+      isOutOfStockOverride,
+    }),
 
   bulkPause: (ids: number[], paused: boolean) =>
     api.post<{ message: string; updated: number }>('/products/bulk/pause', { ids, paused }),
@@ -295,7 +306,7 @@ export const settingsApi = {
     api.post<OllamaTestResult>('/settings/ai/test-ollama', { base_url: baseUrl }),
 
   testGemini: (apiKey: string) =>
-    api.post<{ success: boolean; message?: string; error?: string }>('/settings/ai/test-gemini', { api_key: apiKey }),
+    api.post<{ success: boolean; message?: string; error?: string; models?: string[] }>('/settings/ai/test-gemini', { api_key: apiKey }),
 };
 
 // AI Settings types

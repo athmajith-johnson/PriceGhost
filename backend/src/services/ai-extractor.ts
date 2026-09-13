@@ -121,8 +121,12 @@ Return a JSON object with these fields:
 - confidence: Your confidence in the extraction from 0 to 1
 
 Important:
-- Extract the CURRENT/SALE price, not the original price if there's a discount
-- If you can't find a price with confidence, set price to null
+- Extract the CURRENT/SALE price of the MAIN PRODUCT only
+- Do NOT extract prices of "sponsored items", "related items", or "customers also viewed"
+- Do NOT extract "EMI", "monthly payment", or financing prices
+- The "Price Elements Found" section may contain prices of OTHER products. Verify the price belongs to the MAIN product by checking the HTML context.
+- If the main product is out of stock and no price is explicitly shown for it, set price to null
+- If you can't find a price with confidence for the main product, set price to null
 - Only return valid JSON, no explanation text
 
 HTML Content:
@@ -147,7 +151,7 @@ function prepareHtmlForAI(html: string): string {
     }
   });
 
-  // Extract price-related elements specifically
+  // Extract price-related elements specifically (support multiple currencies)
   const priceElements: string[] = [];
   const priceSelectors = [
     '[class*="price"]',
@@ -155,13 +159,16 @@ function prepareHtmlForAI(html: string): string {
     '[data-testid*="price"]',
     '[itemprop="price"]',
     '[data-price]',
+    '.a-price-whole',
+    '.a-offscreen',
   ];
 
   for (const selector of priceSelectors) {
     $(selector).each((_, el) => {
       const text = $(el).text().trim();
-      const parent = $(el).parent().text().trim().slice(0, 200);
-      if (text && text.match(/\$[\d,]+\.?\d*/)) {
+      const parent = $(el).parent().text().trim().replace(/\s+/g, ' ').slice(0, 200);
+      // Support $, £, €, ¥, ₹, Rs., etc.
+      if (text && text.match(/(?:[\$£€¥₹]|Rs\.?)\s*[\d,]+\.?\d*/i)) {
         priceElements.push(`Price element: "${text}" (context: "${parent.slice(0, 100)}")`);
       }
     });
@@ -170,11 +177,13 @@ function prepareHtmlForAI(html: string): string {
   // Now remove script, style, and other non-content elements
   $('script, style, noscript, iframe, svg, path, meta, link, comment').remove();
 
-  // Get the body content
-  let content = $('body').html() || html;
-
-  // Try to focus on product-related sections if possible
+  // Try to find the main product container, prioritize larger ones
+  let bestHtml: string | null = $('body').html();
+  let bestLength = bestHtml ? bestHtml.length : 0;
+  
   const productSelectors = [
+    '#dp',
+    '#dp-container',
     '[itemtype*="Product"]',
     '[class*="product-detail"]',
     '[class*="productDetail"]',
@@ -185,12 +194,20 @@ function prepareHtmlForAI(html: string): string {
   ];
 
   for (const selector of productSelectors) {
-    const section = $(selector).first();
-    if (section.length && section.html() && section.html()!.length > 500) {
-      content = section.html()!;
-      break;
-    }
+    $(selector).each((_, el) => {
+      const sectionHtml = $(el).html();
+      if (sectionHtml && sectionHtml.length > bestLength) {
+        bestLength = sectionHtml.length;
+        bestHtml = sectionHtml;
+      }
+    });
   }
+
+  // Use the best section found, or fallback to body if it's too small
+  let content = bestHtml || html;
+  
+  // Strip excess whitespace to save tokens
+  content = content.replace(/\s+/g, ' ');
 
   // Build final content with all price-related info at the top
   let finalContent = '';
@@ -201,15 +218,17 @@ function prepareHtmlForAI(html: string): string {
   }
 
   if (priceElements.length > 0) {
-    finalContent += `=== Price Elements Found ===\n${priceElements.slice(0, 10).join('\n')}\n\n`;
-    console.log(`[AI] Found ${priceElements.length} price elements`);
+    // Unique price elements only
+    const uniquePrices = [...new Set(priceElements)];
+    finalContent += `=== Price Elements Found ===\n${uniquePrices.slice(0, 20).join('\n')}\n\n`;
+    console.log(`[AI] Found ${uniquePrices.length} unique price elements`);
   }
 
   finalContent += `=== HTML Content ===\n${content}`;
 
-  // Truncate to ~25000 characters to stay within token limits but capture more content
-  if (finalContent.length > 25000) {
-    finalContent = finalContent.substring(0, 25000) + '\n... [truncated]';
+  // Truncate to ~60000 characters to give models more context while staying within limits
+  if (finalContent.length > 60000) {
+    finalContent = finalContent.substring(0, 60000) + '\n... [truncated]';
   }
 
   console.log(`[AI] Prepared HTML content: ${finalContent.length} characters`);
@@ -219,7 +238,7 @@ function prepareHtmlForAI(html: string): string {
 // Default models to use if user hasn't selected one
 const DEFAULT_ANTHROPIC_MODEL = 'claude-haiku-4-5-20251001';
 const DEFAULT_OPENAI_MODEL = 'gpt-4.1-nano-2025-04-14';
-const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash-lite';
+const DEFAULT_GEMINI_MODEL = 'gemini-3.6-flash';
 
 async function extractWithAnthropic(
   html: string,
@@ -326,26 +345,62 @@ async function extractWithOllama(
   return parseAIResponse(content);
 }
 
+const GEMINI_FREE_MODELS = [
+  'gemini-3.6-flash',
+  'gemini-3.6-flash-8b',
+  'gemini-3.6-pro'
+];
+
 async function extractWithGemini(
   html: string,
   apiKey: string,
   model?: string | null
 ): Promise<AIExtractionResult> {
   const genAI = new GoogleGenerativeAI(apiKey);
-  const modelToUse = model || DEFAULT_GEMINI_MODEL;
-  const geminiModel = genAI.getGenerativeModel({ model: modelToUse });
-
-  const preparedHtml = prepareHtmlForAI(html);
-
-  const result = await geminiModel.generateContent(EXTRACTION_PROMPT + preparedHtml);
-  const response = result.response;
-  const content = response.text();
-
-  if (!content) {
-    throw new Error('No response from Gemini');
+  let modelsToTry = [model || DEFAULT_GEMINI_MODEL];
+  
+  // If we are using a default or a known free model, append the other free models as fallbacks
+  if (!model) {
+    modelsToTry = [...GEMINI_FREE_MODELS];
+  } else if (GEMINI_FREE_MODELS.includes(model)) {
+    modelsToTry = [model, ...GEMINI_FREE_MODELS.filter(m => m !== model)];
   }
 
-  return parseAIResponse(content);
+  const preparedHtml = prepareHtmlForAI(html);
+  const prompt = EXTRACTION_PROMPT + preparedHtml;
+
+  let lastError: any = null;
+
+  for (const modelToUse of modelsToTry) {
+    try {
+      console.log(`[AI] Attempting extraction with Gemini model: ${modelToUse}`);
+      const geminiModel = genAI.getGenerativeModel({ model: modelToUse });
+      const result = await geminiModel.generateContent(prompt);
+      const response = result.response;
+      const content = response.text();
+
+      if (!content) {
+        throw new Error('No response from Gemini');
+      }
+
+      return parseAIResponse(content);
+    } catch (error: any) {
+      lastError = error;
+      const errorMessage = error.message?.toLowerCase() || '';
+      const status = error.status || error.response?.status;
+      
+      // If it's a quota/rate limit error (429), try the next model
+      if (status === 429 || errorMessage.includes('429') || errorMessage.includes('quota') || errorMessage.includes('too many requests')) {
+        console.warn(`[AI] Gemini model ${modelToUse} hit quota limit, trying next model...`);
+        continue; // Try next model in loop
+      }
+      
+      // For any other error (invalid key, bad request), throw immediately
+      throw error;
+    }
+  }
+
+  throw lastError;
 }
 
 // Verification functions for each provider
@@ -455,23 +510,49 @@ async function verifyWithGemini(
   model?: string | null
 ): Promise<AIVerificationResult> {
   const genAI = new GoogleGenerativeAI(apiKey);
-  const modelToUse = model || DEFAULT_GEMINI_MODEL;
-  const geminiModel = genAI.getGenerativeModel({ model: modelToUse });
+  let modelsToTry = [model || DEFAULT_GEMINI_MODEL];
+  
+  if (!model) {
+    modelsToTry = [...GEMINI_FREE_MODELS];
+  } else if (GEMINI_FREE_MODELS.includes(model)) {
+    modelsToTry = [model, ...GEMINI_FREE_MODELS.filter(m => m !== model)];
+  }
 
   const preparedHtml = prepareHtmlForAI(html);
   const prompt = VERIFICATION_PROMPT
     .replace('$SCRAPED_PRICE$', scrapedPrice.toString())
     .replace('$CURRENCY$', currency) + preparedHtml;
 
-  const result = await geminiModel.generateContent(prompt);
-  const response = result.response;
-  const content = response.text();
+  let lastError: any = null;
 
-  if (!content) {
-    throw new Error('No response from Gemini');
+  for (const modelToUse of modelsToTry) {
+    try {
+      console.log(`[AI] Attempting verification with Gemini model: ${modelToUse}`);
+      const geminiModel = genAI.getGenerativeModel({ model: modelToUse });
+      const result = await geminiModel.generateContent(prompt);
+      const response = result.response;
+      const content = response.text();
+
+      if (!content) {
+        throw new Error('No response from Gemini');
+      }
+
+      return parseVerificationResponse(content, scrapedPrice, currency);
+    } catch (error: any) {
+      lastError = error;
+      const errorMessage = error.message?.toLowerCase() || '';
+      const status = error.status || error.response?.status;
+      
+      if (status === 429 || errorMessage.includes('429') || errorMessage.includes('quota') || errorMessage.includes('too many requests')) {
+        console.warn(`[AI] Gemini model ${modelToUse} hit quota limit, trying next model...`);
+        continue;
+      }
+      
+      throw error;
+    }
   }
 
-  return parseVerificationResponse(content, scrapedPrice, currency);
+  throw lastError;
 }
 
 // Stock status verification functions (for variant products with anchor price)
@@ -581,23 +662,49 @@ async function verifyStockStatusWithGemini(
   model?: string | null
 ): Promise<AIStockStatusResult> {
   const genAI = new GoogleGenerativeAI(apiKey);
-  const modelToUse = model || DEFAULT_GEMINI_MODEL;
-  const geminiModel = genAI.getGenerativeModel({ model: modelToUse });
+  let modelsToTry = [model || DEFAULT_GEMINI_MODEL];
+  
+  if (!model) {
+    modelsToTry = [...GEMINI_FREE_MODELS];
+  } else if (GEMINI_FREE_MODELS.includes(model)) {
+    modelsToTry = [model, ...GEMINI_FREE_MODELS.filter(m => m !== model)];
+  }
 
   const preparedHtml = prepareHtmlForAI(html);
   const prompt = STOCK_STATUS_PROMPT
     .replace(/\$VARIANT_PRICE\$/g, variantPrice.toString())
     .replace(/\$CURRENCY\$/g, currency) + preparedHtml;
 
-  const result = await geminiModel.generateContent(prompt);
-  const response = result.response;
-  const content = response.text();
+  let lastError: any = null;
 
-  if (!content) {
-    throw new Error('No response from Gemini');
+  for (const modelToUse of modelsToTry) {
+    try {
+      console.log(`[AI] Attempting stock status verification with Gemini model: ${modelToUse}`);
+      const geminiModel = genAI.getGenerativeModel({ model: modelToUse });
+      const result = await geminiModel.generateContent(prompt);
+      const response = result.response;
+      const content = response.text();
+
+      if (!content) {
+        throw new Error('No response from Gemini');
+      }
+
+      return parseStockStatusResponse(content);
+    } catch (error: any) {
+      lastError = error;
+      const errorMessage = error.message?.toLowerCase() || '';
+      const status = error.status || error.response?.status;
+      
+      if (status === 429 || errorMessage.includes('429') || errorMessage.includes('quota') || errorMessage.includes('too many requests')) {
+        console.warn(`[AI] Gemini model ${modelToUse} hit quota limit, trying next model...`);
+        continue;
+      }
+      
+      throw error;
+    }
   }
 
-  return parseStockStatusResponse(content);
+  throw lastError;
 }
 
 function parseStockStatusResponse(responseText: string): AIStockStatusResult {

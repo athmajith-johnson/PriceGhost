@@ -59,10 +59,10 @@ export default function Dashboard() {
   const [isSavingBulk, setIsSavingBulk] = useState(false);
   const [showBulkActions, setShowBulkActions] = useState(false);
 
-  // Price selection modal state
   const [showPriceModal, setShowPriceModal] = useState(false);
   const [priceReviewData, setPriceReviewData] = useState<PriceReviewResponse | null>(null);
   const [pendingRefreshInterval, setPendingRefreshInterval] = useState<number>(3600);
+  const [updatingProductId, setUpdatingProductId] = useState<number | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -109,6 +109,7 @@ export default function Dashboard() {
     if (isPriceReviewResponse(response.data)) {
       setPriceReviewData(response.data);
       setPendingRefreshInterval(refreshInterval);
+      setUpdatingProductId(null);
       setShowPriceModal(true);
       return; // Don't add product yet - wait for user selection
     }
@@ -117,28 +118,54 @@ export default function Dashboard() {
     setProducts((prev) => [response.data as Product, ...prev]);
   };
 
-  const handlePriceSelected = async (selectedPrice: number, selectedMethod: string, selectedCurrency: string) => {
+  const handleTriggerPriceReview = async (productId: number) => {
+    try {
+      const response = await productsApi.fetchCandidates(productId);
+      setPriceReviewData(response.data);
+      setUpdatingProductId(productId);
+      setShowPriceModal(true);
+    } catch (error) {
+      alert('Failed to fetch price candidates');
+    }
+  };
+
+  const handlePriceSelected = async (selectedPrice: number, selectedMethod: string, selectedCurrency: string, isOutOfStockOverride?: boolean) => {
     if (!priceReviewData) return;
 
-    const response = await productsApi.create(
-      priceReviewData.url,
-      pendingRefreshInterval,
-      selectedPrice,
-      selectedMethod,
-      selectedCurrency
-    );
+    if (updatingProductId) {
+      const response = await productsApi.updateSource(
+        updatingProductId,
+        selectedPrice,
+        selectedMethod,
+        selectedCurrency,
+        isOutOfStockOverride
+      );
+      setProducts(prev => prev.map(p => p.id === updatingProductId ? { ...p, ...response.data } : p));
+    } else {
+      const response = await productsApi.create(
+        priceReviewData.url,
+        pendingRefreshInterval,
+        selectedPrice,
+        selectedMethod,
+        selectedCurrency,
+        isOutOfStockOverride
+      );
 
-    // When selecting a price, the API should always return a Product
-    if (!isPriceReviewResponse(response.data)) {
-      setProducts((prev) => [response.data as Product, ...prev]);
+      // When selecting a price, the API should always return a Product
+      if (!isPriceReviewResponse(response.data)) {
+        setProducts((prev) => [response.data as Product, ...prev]);
+      }
     }
+    
     setShowPriceModal(false);
     setPriceReviewData(null);
+    setUpdatingProductId(null);
   };
 
   const handlePriceModalClose = () => {
     setShowPriceModal(false);
     setPriceReviewData(null);
+    setUpdatingProductId(null);
   };
 
   const handleCreateGroup = async () => {
@@ -1173,6 +1200,7 @@ export default function Dashboard() {
                        onSelectProduct={handleSelectProduct}
                        onRenameGroup={handleRenameGroup}
                        onDeleteGroup={handleDeleteGroup}
+                       onTriggerPriceReview={handleTriggerPriceReview}
                      />
                    );
                 })}
@@ -1187,6 +1215,7 @@ export default function Dashboard() {
                 onRefreshProduct={handleRefreshProduct}
                 selectedIds={selectedIds}
                 onSelectProduct={handleSelectProduct}
+                onTriggerPriceReview={handleTriggerPriceReview}
               />
               
               <DragOverlay>
@@ -1198,6 +1227,7 @@ export default function Dashboard() {
                        onRefresh={async () => {}} 
                        isSelected={false} 
                        onSelect={() => {}} 
+                       onTriggerPriceReview={handleTriggerPriceReview}
                      />
                   ) : (
                      <div style={{ background: 'var(--surface-50)', padding: '1rem', border: '1px solid var(--primary)', borderRadius: '8px' }}>

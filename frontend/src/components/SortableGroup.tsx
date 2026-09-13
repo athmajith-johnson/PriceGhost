@@ -13,6 +13,7 @@ interface Props {
   onSelectProduct: (id: number, selected: boolean) => void;
   onRenameGroup?: (id: number, newName: string) => void;
   onDeleteGroup?: (id: number) => void;
+  onTriggerPriceReview?: (id: number) => void;
 }
 
 export function SortableGroup({
@@ -24,6 +25,7 @@ export function SortableGroup({
   onSelectProduct,
   onRenameGroup,
   onDeleteGroup,
+  onTriggerPriceReview,
 }: Props) {
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(group.name);
@@ -177,6 +179,7 @@ export function SortableGroup({
                   onRefresh={onRefreshProduct}
                   isSelected={selectedIds.has(product.id)}
                   onSelect={onSelectProduct}
+                  onTriggerPriceReview={onTriggerPriceReview}
                 />
               ))
             ) : (

@@ -72,6 +72,7 @@ export default function Settings() {
   const [isTestingOllama, setIsTestingOllama] = useState(false);
   const [geminiApiKey, setGeminiApiKey] = useState('');
   const [geminiModel, setGeminiModel] = useState('');
+  const [availableGeminiModels, setAvailableGeminiModels] = useState<string[]>([]);
   const [isTestingGemini, setIsTestingGemini] = useState(false);
   const [isSavingAI, setIsSavingAI] = useState(false);
   const [isTestingAI, setIsTestingAI] = useState(false);
@@ -515,12 +516,21 @@ export default function Settings() {
     try {
       const response = await settingsApi.testGemini(geminiApiKey);
       if (response.data.success) {
-        setSuccess('Successfully connected to Gemini API!');
+        if (response.data.models && response.data.models.length > 0) {
+          setAvailableGeminiModels(response.data.models);
+          setSuccess(`Connected to Gemini API! Found ${response.data.models.length} models.`);
+        } else {
+          setSuccess('Successfully connected to Gemini API!');
+        }
       } else {
         setError(response.data.error || 'Failed to connect to Gemini');
       }
-    } catch {
-      setError('Failed to connect to Gemini. Check your API key.');
+    } catch (error: any) {
+      if (error.response?.data?.error) {
+        setError(error.response.data.error);
+      } else {
+        setError('Failed to connect to Gemini. Check your API key.');
+      }
     } finally {
       setIsTestingGemini(false);
     }
@@ -1863,27 +1873,51 @@ export default function Settings() {
 
                         <div className="settings-form-group">
                           <label>Model</label>
-                          <select
-                            value={geminiModel}
-                            onChange={(e) => setGeminiModel(e.target.value)}
-                            style={{
-                              width: '100%',
-                              padding: '0.625rem 0.75rem',
-                              border: '1px solid var(--border)',
-                              borderRadius: '0.375rem',
-                              background: 'var(--background)',
-                              color: 'var(--text)',
-                              fontSize: '0.875rem'
-                            }}
-                          >
-                            <option value="">Default (Gemini 2.5 Flash Lite)</option>
-                            <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash Lite (Fast, cheap)</option>
-                            <option value="gemini-2.5-flash">Gemini 2.5 Flash (Balanced)</option>
-                            <option value="gemini-2.5-pro">Gemini 2.5 Pro (High accuracy)</option>
-                            <option value="gemini-3-flash-preview">Gemini 3 Flash Preview (Latest)</option>
-                          </select>
+                          {availableGeminiModels.length > 0 ? (
+                            <select
+                              value={geminiModel}
+                              onChange={(e) => setGeminiModel(e.target.value)}
+                              style={{
+                                width: '100%',
+                                padding: '0.625rem 0.75rem',
+                                border: '1px solid var(--border)',
+                                borderRadius: '0.375rem',
+                                background: 'var(--background)',
+                                color: 'var(--text)',
+                                fontSize: '0.875rem'
+                              }}
+                            >
+                              <option value="">Select a model...</option>
+                              {availableGeminiModels.map((model) => (
+                                <option key={model} value={model}>{model}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <select
+                              value={geminiModel}
+                              onChange={(e) => setGeminiModel(e.target.value)}
+                              style={{
+                                width: '100%',
+                                padding: '0.625rem 0.75rem',
+                                border: '1px solid var(--border)',
+                                borderRadius: '0.375rem',
+                                background: 'var(--background)',
+                                color: 'var(--text)',
+                                fontSize: '0.875rem'
+                              }}
+                            >
+                              <option value="">Default (Gemini 3.6 Flash 8B)</option>
+                              <option value="gemini-3.6-flash-8b">Gemini 3.6 Flash 8B (Fast, cheap)</option>
+                              <option value="gemini-3.6-flash">Gemini 3.6 Flash (Balanced)</option>
+                              <option value="gemini-3.6-pro">Gemini 3.6 Pro (High accuracy)</option>
+                              <option value="gemini-4-flash-preview">Gemini 4 Flash Preview (Latest)</option>
+                            </select>
+                          )}
                           <p className="hint">
-                            Choose a model based on your cost/accuracy needs. Flash Lite is fastest and cheapest.
+                            {availableGeminiModels.length > 0 
+                              ? 'Select from your available models.' 
+                              : 'Choose a model based on your cost/accuracy needs. Flash is fastest and cheapest. Click "Test Key" to load all available models for your account.'
+                            }
                             {aiSettings?.gemini_model && ` (currently: ${aiSettings.gemini_model})`}
                           </p>
                         </div>

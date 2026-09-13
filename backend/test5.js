@@ -1,0 +1,11 @@
+const cheerio = require('cheerio');
+const fs = require('fs');
+const html = fs.readFileSync('amazon.html', 'utf8');
+const $ = cheerio.load(html);
+const parsePrice = require('./dist/utils/priceParser').parsePrice;
+const ifbText = $('[data-asin="B0CTHF27FT"]').text();
+console.log('IFB Text:', ifbText);
+console.log('IFB parsed:', parsePrice(ifbText));
+const faberText = $('[data-asin="B0BTMM5DRB"]').text();
+console.log('Faber Text:', faberText);
+console.log('Faber parsed:', parsePrice(faberText));

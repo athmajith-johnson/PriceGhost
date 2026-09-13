@@ -12,7 +12,7 @@ export interface PriceCandidate {
 interface PriceSelectionModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSelect: (price: number, method: string, currency: string) => void;
+  onSelect: (price: number, method: string, currency: string, isOutOfStockOverride?: boolean) => void;
   productName: string | null;
   imageUrl: string | null;
   candidates: PriceCandidate[];
@@ -59,6 +59,15 @@ export default function PriceSelectionModal({
     setIsSubmitting(true);
     try {
       await onSelect(selected.price, selected.method, selected.currency);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleOutOfStock = async () => {
+    setIsSubmitting(true);
+    try {
+      await onSelect(0, 'out_of_stock', 'USD', true);
     } finally {
       setIsSubmitting(false);
     }
@@ -322,6 +331,11 @@ export default function PriceSelectionModal({
         </div>
 
         <div className="price-modal-footer">
+          <div style={{ display: 'flex', gap: '0.75rem', flex: 1 }}>
+            <button className="btn btn-secondary" onClick={handleOutOfStock} disabled={isSubmitting} title="None of these prices are correct, the product is actually out of stock">
+              Product is Out of Stock
+            </button>
+          </div>
           <button className="btn btn-secondary" onClick={onClose} disabled={isSubmitting}>
             Cancel
           </button>

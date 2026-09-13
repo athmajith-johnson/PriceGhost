@@ -1,0 +1,1 @@
+const axios = require('axios'); axios.get('https://generativelanguage.googleapis.com/v1beta/models?key=YOUR_API_KEY_HERE').then(r => console.log(r.data.models.map(m => m.name))).catch(e => console.error(e.message));
