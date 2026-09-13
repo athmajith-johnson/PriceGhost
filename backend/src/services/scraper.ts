@@ -185,10 +185,18 @@ function extractGenericCssCandidates($: CheerioAPI): PriceCandidate[] {
   const candidates: PriceCandidate[] = [];
   const seen = new Set<number>();
 
+  const isInRelatedContainer = (el: cheerio.Cheerio) => {
+    const parent = el.closest('.carousel, .related, .sponsored, [id*="similar"], [id*="related"], [id*="sponsored"], [id*="alternative"], [class*="similar"], [class*="alternative"], [class*="related"]');
+    return parent.length > 0;
+  };
+
   for (const selector of genericPriceSelectors) {
     const elements = $(selector);
     elements.each((_, el) => {
       const $el = $(el);
+      
+      if (isInRelatedContainer($el)) return;
+
       // Skip if this looks like an "original" or "was" price
       const classAttr = $el.attr('class') || '';
       const parentClass = $el.parent().attr('class') || '';
@@ -458,6 +466,12 @@ const siteScrapers: SiteScraper[] = [
   {
     match: (url) => /amazon\.(com|co\.uk|ca|de|fr|es|it|co\.jp|in|com\.au)/i.test(url),
     scrape: ($) => {
+      // Helper to check if element is inside a related products carousel
+      const isInRelatedContainer = (el: ReturnType<typeof $>) => {
+        const parent = el.closest('.a-carousel, #similar-items, #related-items, #cerberus-shared_DetailPage_0, .sponsored-products, [data-a-carousel-options], [id*="similar"], [id*="related"], [id*="sponsored"], [id*="alternative"]');
+        return parent.length > 0;
+      };
+
       // Helper to check if element is inside a coupon/savings container
       const isInCouponContainer = (el: ReturnType<typeof $>) => {
         const parents = el.parents().toArray();
@@ -506,7 +520,7 @@ const siteScrapers: SiteScraper[] = [
 
         for (let i = 0; i < priceElements.length; i++) {
           const el = $(priceElements[i]);
-          if (isInCouponContainer(el)) continue;
+          if (isInCouponContainer(el) || isInRelatedContainer(el)) continue;
 
           const parentClass = el.parent().attr('class') || '';
           if (/savings|coupon|save/i.test(parentClass)) continue;
@@ -568,7 +582,7 @@ const siteScrapers: SiteScraper[] = [
 
       for (const selector of fallbackSelectors) {
         const el = $(selector).first();
-        if (el.length && !isInCouponContainer(el)) {
+        if (el.length && !isInCouponContainer(el) && !isInRelatedContainer(el)) {
           const text = el.text().trim();
           const parsed = parsePrice(text);
           if (parsed && parsed.price >= 2) {
@@ -616,10 +630,12 @@ const siteScrapers: SiteScraper[] = [
       let stockStatus: StockStatus = 'unknown';
       const availabilityText = $('#availability').text().toLowerCase();
       const outOfStockDiv = $('#outOfStock').length > 0;
+      const seeAllBuyingOptions = $('#buybox-see-all-buying-choices').length > 0 || $('a[title="See All Buying Options"]').length > 0 || availabilityText.includes('see all buying options');
       const unavailableText = $('body').text().toLowerCase();
 
       if (
         outOfStockDiv ||
+        seeAllBuyingOptions ||
         availabilityText.includes('currently unavailable') ||
         availabilityText.includes('out of stock') ||
         availabilityText.includes('not available') ||
@@ -629,6 +645,7 @@ const siteScrapers: SiteScraper[] = [
           unavailableText.includes('currently unavailable') ||
           unavailableText.includes("we don't know when or if this item will be back in stock") ||
           outOfStockDiv ||
+          seeAllBuyingOptions ||
           availabilityText.includes('out of stock')
         ) {
           stockStatus = 'out_of_stock';
