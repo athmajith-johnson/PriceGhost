@@ -185,7 +185,7 @@ function extractGenericCssCandidates($: CheerioAPI): PriceCandidate[] {
   const candidates: PriceCandidate[] = [];
   const seen = new Set<number>();
 
-  const isInRelatedContainer = (el: cheerio.Cheerio) => {
+  const isInRelatedContainer = (el: ReturnType<typeof $>) => {
     const parent = el.closest('.carousel, .related, .sponsored, [id*="similar"], [id*="related"], [id*="sponsored"], [id*="alternative"], [class*="similar"], [class*="alternative"], [class*="related"]');
     return parent.length > 0;
   };
