@@ -186,7 +186,7 @@ function extractGenericCssCandidates($: CheerioAPI): PriceCandidate[] {
   const seen = new Set<number>();
 
   const isInRelatedContainer = (el: ReturnType<typeof $>) => {
-    const parent = el.closest('.carousel, .related, .sponsored, [id*="similar"], [id*="related"], [id*="sponsored"], [id*="alternative"], [class*="similar"], [class*="alternative"], [class*="related"]');
+    const parent = el.closest('.carousel, .a-carousel, .related, .sponsored, .sponsored-products, #similar-items, #related-items, #cerberus-shared_DetailPage_0, [data-a-carousel-options], [id*="similar"], [id*="related"], [id*="sponsored"], [id*="alternative"], [class*="similar"], [class*="alternative"], [class*="related"]');
     return parent.length > 0;
   };
 
@@ -468,7 +468,7 @@ const siteScrapers: SiteScraper[] = [
     scrape: ($) => {
       // Helper to check if element is inside a related products carousel
       const isInRelatedContainer = (el: ReturnType<typeof $>) => {
-        const parent = el.closest('.a-carousel, #similar-items, #related-items, #cerberus-shared_DetailPage_0, .sponsored-products, [data-a-carousel-options], [id*="similar"], [id*="related"], [id*="sponsored"], [id*="alternative"]');
+        const parent = el.closest('.carousel, .a-carousel, .related, .sponsored, .sponsored-products, #similar-items, #related-items, #cerberus-shared_DetailPage_0, [data-a-carousel-options], [id*="similar"], [id*="related"], [id*="sponsored"], [id*="alternative"], [class*="similar"], [class*="alternative"], [class*="related"]');
         return parent.length > 0;
       };
 
