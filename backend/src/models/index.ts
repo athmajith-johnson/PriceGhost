@@ -703,6 +703,14 @@ export const productQueries = {
     return result.rowCount || 0;
   },
 
+  updateGroup: async (id: number, userId: number, groupId: number | null): Promise<boolean> => {
+    const result = await pool.query(
+      'UPDATE products SET group_id = $1 WHERE id = $2 AND user_id = $3',
+      [groupId, id, userId]
+    );
+    return (result.rowCount ?? 0) > 0;
+  },
+
   reorder: async (userId: number, updates: { id: number; group_id: number | null; order_index: number }[]): Promise<void> => {
     const client = await pool.connect();
     try {

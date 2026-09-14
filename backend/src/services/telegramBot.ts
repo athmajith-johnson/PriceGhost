@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { userQueries, productQueries, priceHistoryQueries, stockStatusHistoryQueries } from '../models';
+import { userQueries, productQueries, priceHistoryQueries, stockStatusHistoryQueries, groupQueries } from '../models';
 import { scrapeProductWithVoting } from './scraper';
 
 // In-memory cache for pending additions
@@ -107,7 +107,8 @@ class TelegramBotManager {
         "• `/help` - Show this menu"
       );
     } else if (text.startsWith('/list')) {
-      await this.handleList(token, chatId, user.id);
+      const filter = text.substring(5).trim();
+      await this.handleList(token, chatId, user.id, filter);
     } else if (text.startsWith('/check')) {
       await this.handleCheck(token, chatId, user.id);
     } else if (text.startsWith('/remove ')) {
@@ -120,7 +121,7 @@ class TelegramBotManager {
     }
   }
 
-  private async handleList(token: string, chatId: string, userId: number) {
+  private async handleList(token: string, chatId: string, userId: number, filter: string) {
     try {
       const products = await productQueries.findByUserIdWithSparkline(userId);
       if (products.length === 0) {
@@ -128,17 +129,46 @@ class TelegramBotManager {
         return;
       }
 
-      let message = "📦 **Your Tracked Products:**\n\n";
+      const groups = await groupQueries.findByUserId(userId);
+      const groupMap = new Map<number, string>();
+      for (const g of groups) {
+        groupMap.set(g.id, g.name);
+      }
+
+      // Group products
+      const groupedProducts: Record<string, typeof products> = {
+        'Ungrouped': []
+      };
+      
       for (const p of products) {
-        const priceStr = p.current_price !== null ? `${p.currency === 'USD' ? '$' : p.currency}${p.current_price}` : 'Unknown';
-        const stockIcon = p.stock_status === 'in_stock' ? '✅' : (p.stock_status === 'out_of_stock' ? '❌' : '❓');
-        message += `*ID:* ${p.id} - [${p.name || 'Unnamed Product'}](${p.url})\n`;
-        message += `*Price:* ${priceStr} | *Stock:* ${stockIcon}\n\n`;
+        const gName = p.group_id ? (groupMap.get(p.group_id) || 'Ungrouped') : 'Ungrouped';
+        if (!groupedProducts[gName]) groupedProducts[gName] = [];
+        groupedProducts[gName].push(p);
+      }
+
+      let message = "📦 **Your Tracked Products:**\n\n";
+      const groupNames = Object.keys(groupedProducts).sort();
+
+      for (const gName of groupNames) {
+        if (groupedProducts[gName].length === 0) continue;
+        if (filter && gName.toLowerCase() !== filter.toLowerCase() && gName !== filter) continue;
+        
+        message += `📁 **${gName}**\n`;
+        for (const p of groupedProducts[gName]) {
+          const priceStr = p.current_price !== null ? `${p.currency === 'USD' ? '$' : p.currency}${p.current_price}` : 'Unknown';
+          const stockIcon = p.stock_status === 'in_stock' ? '✅' : (p.stock_status === 'out_of_stock' ? '❌' : '❓');
+          message += `• [${p.name || 'Unnamed Product'}](${p.url}) - ${priceStr} ${stockIcon} (ID: ${p.id})\n`;
+        }
+        message += "\n";
       }
       
+      if (message.trim() === "📦 **Your Tracked Products:**") {
+         message = `No products found for group "${filter}".`;
+      }
+
       await this.sendMessage(token, chatId, message, {
         inline_keyboard: [[{ text: 'Refresh Prices', callback_data: 'cmd_check' }]]
-      });
+      }, false, true);
     } catch (e) {
       console.error("[TelegramBot] list error:", e);
       await this.sendMessage(token, chatId, "❌ Failed to fetch your products.");
@@ -331,7 +361,42 @@ class TelegramBotManager {
         await productQueries.updateLastChecked(product.id, 3600);
         pendingAdditions.delete(pId);
 
-        await this.editMessage(token, chatId, messageId, `✅ Successfully added **${pending.scrapedData.name || 'Product'}** to your tracking list!`);
+        // Prompt for group assignment
+        const groups = await groupQueries.findByUserId(pending.userId);
+        if (groups.length > 0) {
+          const groupButtons = [];
+          for (let i = 0; i < groups.length; i += 2) {
+            const row = [];
+            row.push({ text: `📁 ${groups[i].name}`, callback_data: `grp_${product.id}_${groups[i].id}` });
+            if (i + 1 < groups.length) {
+              row.push({ text: `📁 ${groups[i+1].name}`, callback_data: `grp_${product.id}_${groups[i+1].id}` });
+            }
+            groupButtons.push(row);
+          }
+          groupButtons.push([{ text: "⏩ Skip", callback_data: `grp_${product.id}_skip` }]);
+          
+          await this.editMessage(token, chatId, messageId, `✅ Added **${pending.scrapedData.name || 'Product'}**!\n\nWould you like to assign it to a group?`, { inline_keyboard: groupButtons });
+        } else {
+          await this.editMessage(token, chatId, messageId, `✅ Successfully added **${pending.scrapedData.name || 'Product'}** to your tracking list!`);
+        }
+      } else if (data.startsWith('grp_')) {
+        const parts = data.split('_');
+        const productId = parseInt(parts[1], 10);
+        const action = parts[2];
+        const user = await userQueries.findByTelegramChatId(chatId);
+        
+        if (!user) return;
+
+        if (action === 'skip') {
+          await this.editMessage(token, chatId, messageId, `✅ Product tracking configuration complete!`);
+        } else {
+          const groupId = parseInt(action, 10);
+          const product = await productQueries.findById(productId, user.id);
+          if (product) {
+            await productQueries.updateGroup(productId, user.id, groupId);
+            await this.editMessage(token, chatId, messageId, `✅ Assigned **${product.name || 'Product'}** to group!`);
+          }
+        }
       }
 
       // Answer callback query to remove loading state
@@ -344,25 +409,27 @@ class TelegramBotManager {
     }
   }
 
-  private async editMessage(token: string, chatId: string, messageId: number, text: string) {
+  private async editMessage(token: string, chatId: string, messageId: number, text: string, replyMarkup?: any) {
     try {
       await axios.post(`https://api.telegram.org/bot${token}/editMessageText`, {
         chat_id: chatId,
         message_id: messageId,
         text,
-        parse_mode: 'Markdown'
+        parse_mode: 'Markdown',
+        reply_markup: replyMarkup
       });
     } catch (e) {}
   }
 
   // Modified to optionally return response data
-  private async sendMessage(token: string, chatId: string, text: string, replyMarkup?: any, returnData = false) {
+  private async sendMessage(token: string, chatId: string, text: string, replyMarkup?: any, returnData = false, disableWebPagePreview = false) {
     try {
       const res = await axios.post(`https://api.telegram.org/bot${token}/sendMessage`, {
         chat_id: chatId,
         text,
         parse_mode: 'Markdown',
-        reply_markup: replyMarkup
+        reply_markup: replyMarkup,
+        disable_web_page_preview: disableWebPagePreview
       });
       if (returnData) return res.data;
     } catch (e: any) {
