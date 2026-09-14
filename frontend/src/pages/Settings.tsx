@@ -1229,7 +1229,10 @@ export default function Settings() {
                     onChange={(e) => setTelegramChatId(e.target.value)}
                     placeholder="Enter your chat ID"
                   />
-                  <p className="hint">Send /start to @userinfobot to get your chat ID</p>
+                  <p className="hint">
+                    Send /start to @userinfobot to get your chat ID. 
+                    <strong> Important: You MUST send a message (like /start) to your own bot first before it can send you messages!</strong>
+                  </p>
                 </div>
 
                 <div className="settings-form-actions">

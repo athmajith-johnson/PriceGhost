@@ -63,6 +63,21 @@ export const userQueries = {
     return result.rows[0] || null;
   },
 
+  findByTelegramChatId: async (chatId: string): Promise<User | null> => {
+    const result = await pool.query(
+      'SELECT * FROM users WHERE telegram_chat_id = $1 AND telegram_enabled = true',
+      [chatId]
+    );
+    return result.rows[0] || null;
+  },
+
+  findAllTelegramBots: async (): Promise<{ telegram_bot_token: string }[]> => {
+    const result = await pool.query(
+      'SELECT DISTINCT telegram_bot_token FROM users WHERE telegram_bot_token IS NOT NULL AND telegram_chat_id IS NOT NULL AND telegram_enabled = true'
+    );
+    return result.rows;
+  },
+
   findById: async (id: number): Promise<User | null> => {
     const result = await pool.query(
       'SELECT * FROM users WHERE id = $1',

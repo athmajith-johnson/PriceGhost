@@ -89,6 +89,11 @@ router.put('/notifications', async (req: AuthRequest, res: Response) => {
       return;
     }
 
+    // Sync telegram bot if token exists
+    if (settings.telegram_bot_token && settings.telegram_enabled) {
+      import('../services/telegramBot').then(m => m.telegramBotManager.syncBot(settings.telegram_bot_token));
+    }
+
     res.json({
       telegram_bot_token: settings.telegram_bot_token || null,
       telegram_chat_id: settings.telegram_chat_id || null,

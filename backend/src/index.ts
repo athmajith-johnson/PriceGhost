@@ -321,9 +321,10 @@ async function startServer() {
     app.listen(PORT, () => {
       console.log(`PriceGhost API server running on port ${PORT}`);
 
-      // Start the background price checker
+      // Start the background price checker and telegram bot
       if (process.env.NODE_ENV !== 'test') {
         startScheduler();
+        import('./services/telegramBot').then(m => m.telegramBotManager.start());
       }
     });
   } catch (error) {
