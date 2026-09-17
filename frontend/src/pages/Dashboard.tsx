@@ -90,8 +90,28 @@ export default function Dashboard() {
     }
   };
 
+  const fetchSilent = async () => {
+    try {
+      const [productsRes, groupsRes] = await Promise.all([
+        productsApi.getAll(),
+        groupsApi.getAll()
+      ]);
+      setProducts(productsRes.data);
+      setGroups(groupsRes.data);
+    } catch {
+      // Ignore errors on background refresh
+    }
+  };
+
   useEffect(() => {
     fetchData();
+
+    // Auto-refresh every 60 seconds
+    const interval = setInterval(() => {
+      fetchSilent();
+    }, 60000);
+
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
