@@ -24,12 +24,13 @@ function isPriceReviewResponse(response: Product | PriceReviewResponse): respons
   return 'needsReview' in response && response.needsReview === true;
 }
 
-type SortOption = 'manual' | 'date_added' | 'name' | 'price' | 'price_change' | 'website';
+type SortOption = 'manual' | 'date_added' | 'name' | 'price' | 'price_change' | 'website' | 'last_checked';
 type SortOrder = 'asc' | 'desc';
 
 const SORT_OPTIONS: { value: SortOption; label: string }[] = [
   { value: 'manual', label: 'Custom Order' },
   { value: 'date_added', label: 'Date Added' },
+  { value: 'last_checked', label: 'Recently Checked' },
   { value: 'name', label: 'Product Name' },
   { value: 'price', label: 'Price' },
   { value: 'price_change', label: 'Price Change (7d)' },
@@ -564,6 +565,9 @@ export default function Dashboard() {
           break;
         case 'date_added':
           comparison = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+          break;
+        case 'last_checked':
+          comparison = new Date(a.last_checked || 0).getTime() - new Date(b.last_checked || 0).getTime();
           break;
         case 'name':
           comparison = (a.name || '').localeCompare(b.name || '');
