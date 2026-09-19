@@ -24,10 +24,11 @@ function isPriceReviewResponse(response: Product | PriceReviewResponse): respons
   return 'needsReview' in response && response.needsReview === true;
 }
 
-type SortOption = 'date_added' | 'name' | 'price' | 'price_change' | 'website';
+type SortOption = 'manual' | 'date_added' | 'name' | 'price' | 'price_change' | 'website';
 type SortOrder = 'asc' | 'desc';
 
 const SORT_OPTIONS: { value: SortOption; label: string }[] = [
+  { value: 'manual', label: 'Custom Order' },
   { value: 'date_added', label: 'Date Added' },
   { value: 'name', label: 'Product Name' },
   { value: 'price', label: 'Price' },
@@ -48,7 +49,7 @@ export default function Dashboard() {
   const [pauseFilter, setPauseFilter] = useState<'all' | 'active' | 'paused'>('all');
   const [sortBy, setSortBy] = useState<SortOption>(() => {
     const saved = localStorage.getItem('dashboard_sort_by');
-    return (saved as SortOption) || 'date_added';
+    return (saved as SortOption) || 'manual';
   });
   const [sortOrder, setSortOrder] = useState<SortOrder>(() => {
     const saved = localStorage.getItem('dashboard_sort_order');
@@ -558,6 +559,9 @@ export default function Dashboard() {
       let comparison = 0;
 
       switch (sortBy) {
+        case 'manual':
+          comparison = (a.order_index ?? 0) - (b.order_index ?? 0);
+          break;
         case 'date_added':
           comparison = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
           break;
