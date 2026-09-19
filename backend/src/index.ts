@@ -318,7 +318,7 @@ async function startServer() {
     // Run database migrations BEFORE accepting connections
     await runMigrations();
 
-    app.listen(PORT, () => {
+    app.listen(Number(PORT), '0.0.0.0', () => {
       console.log(`PriceGhost API server running on port ${PORT}`);
 
       // Start the background price checker and telegram bot
